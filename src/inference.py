@@ -62,9 +62,12 @@ os.makedirs(root+'/gen/', exist_ok=True)
 os.makedirs(root+'/ref/', exist_ok=True)
 
 # Initialize encoder and decoder
-encoder = Encoder(dim=opt.dim, in_channels=opt.channels, n_downsample=opt.n_downsample)
-G_trg= Generator(dim=opt.dim, out_channels=opt.channels, n_upsample=opt.n_downsample, shared_block=ResidualBlock(features=shared_dim))
-if opt.src_id: G_src = Generator(dim=opt.dim, out_channels=opt.channels, n_upsample=opt.n_downsample, shared_block=ResidualBlock(features=shared_dim))
+# Initialize generator and discriminator
+shared_E = ResidualBlock(features=shared_dim)
+encoder = Encoder(dim=opt.dim, in_channels=opt.channels, n_downsample=opt.n_downsample, shared_block=shared_E)
+shared_G = ResidualBlock(features=shared_dim)
+G1 = Generator(dim=opt.dim, out_channels=opt.channels, n_upsample=opt.n_downsample, shared_block=shared_G)
+D1 = Discriminator(input_shape)
 
 if cuda:
     encoder = encoder.cuda()
@@ -72,13 +75,12 @@ if cuda:
     if opt.src_id: G_src = G_src.cuda()
 
 # Load pretrained models
-encoder.load_state_dict(torch.load("saved_models/%s/encoder_%02d.pth" % (opt.model_name, opt.epoch), map_location=device))
-G_trg.load_state_dict(torch.load("saved_models/%s/G%s_%02d.pth" % (opt.model_name, opt.trg_id, opt.epoch), map_location=device))
-if opt.src_id: G_src.load_state_dict(torch.load("saved_models/%s/G%s_%02d.pth" % (opt.model_name, opt.src_id, opt.epoch)))
+encoder.load_state_dict(torch.load("saved_models/%s/encoder_%d.pth" % (opt.model_name, opt.epoch), map_location=torch.device('cpu')))
+G1.load_state_dict(torch.load("saved_models/%s/G%s_%02d.pth" % (opt.model_name, opt.trg_id, opt.epoch), map_location=torch.device('cpu')))
 
 # Set to eval mode 
 encoder.eval()
-G_trg.eval()
+G1.eval()
 if opt.src_id: G_src.eval()
 
 # Initialising arrays to store SSIM (will average at end)
@@ -106,7 +108,7 @@ def infer(S):
     ret = {} # just stores inference output
     
     mu, Z = encoder(X)
-    fake_X = G_trg(Z)
+    fake_X = G1(Z)
     ret['fake'] = to_numpy(fake_X)
     
     
@@ -201,7 +203,7 @@ def audio_infer(wav):
     x = reconstruct_waveform(spect_trg)
     
     sf.write(root+'/gen/%s_gen.wav'%fname, x, sample_rate)  # generated output
-    sf.write(root+'/ref/%s_ref.wav'%fname, sample, sample_rate)  # input reference (for convenience)
+    # sf.write(root+'/ref/%s_ref.wav'%fname, sample, sample_rate)  # input reference (for convenience)
     
     
 if opt.wav:
