@@ -2,6 +2,8 @@ import argparse
 import pickle
 from tqdm import tqdm
 from utils import ls, preprocess_wav, melspectrogram
+import os
+import glob
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_name", type=str, help="name of the model")
@@ -13,10 +15,11 @@ print(opt)
 feats = {}
 
 for spkr in range(opt.n_spkrs):
-    wavs = ls('%s/spkr_%s | grep .wav'%(opt.dataset, spkr+1))
+    wavs = glob.glob('%s/spkr_%s/*.wav'%(opt.dataset, spkr+1))
+    wavs = [w.replace('\\', '/') for w in wavs]
     feats[spkr] = [None]*len(wavs)
     for i, wav in tqdm(enumerate(wavs), total=len(wavs), desc="spkr_%d"%(spkr+1)):
-        sample = preprocess_wav('%s/spkr_%s/%s'%(opt.dataset, spkr+1, wav))
+        sample = preprocess_wav(wav)
         feats[spkr][i] = melspectrogram(sample)
 
 pickle.dump(feats,open('%s/%s.pickle'%(opt.dataset, opt.model_name),'wb'))
