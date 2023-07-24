@@ -1,7 +1,3 @@
-# SOURCE:
-# - https://github.com/CorentinJ/Real-Time-Voice-Cloning
-# - https://github.com/r9y9/wavenet_vocoder
-
 from scipy.ndimage.morphology import binary_dilation
 import os
 import math
@@ -12,8 +8,6 @@ import librosa
 import struct
 from params import *
 from scipy.signal import lfilter
-import soundfile as sf
-import matplotlib.pyplot as plt
 
 try:
     import webrtcvad
@@ -44,7 +38,7 @@ def preprocess_wav(fpath_or_wav: Union[str, Path, np.ndarray],
 
     # Resample the wav if needed
     if source_sr is not None and source_sr != sample_rate:
-        wav = librosa.resample(wav, orig_sr=source_sr, target_sr=sample_rate)
+        wav = librosa.resample(wav, source_sr, sample_rate)
 
     # Apply the preprocessing: normalize volume and shorten long silences
     wav = normalize_volume(wav, audio_norm_target_dBFS, increase_only=True)
@@ -106,13 +100,7 @@ def normalize_volume(wav, target_dBFS, increase_only=False, decrease_only=False)
 
 
 def ls(path):
-    # return os.popen('ls %s'%path).read().split('\n')[:-1]
-    if os.name == 'posix':  # for Linux and macOS
-        return os.popen('ls %s' %path).read().split('\n')[:-1]
-    elif os.name == 'nt':  # for Windows
-        return os.popen('dir /b %s' %path).read().split('\n')[:-1]
-    else:
-        raise OSError('Unsupported operating system: %s' % os.name)
+    return os.popen('ls %s'%path).read().split('\n')[:-1]
 
 def label_2_float(x, bits):
     return 2 * x / (2**bits - 1.) - 1.
@@ -129,7 +117,7 @@ def load_wav(path):
 
 
 def save_wav(x, path):
-    sf.write(path, x.astype(np.float32), sample_rate)
+    librosa.output.write_wav(path, x.astype(np.float32), sr=sample_rate)
 
 
 def split_signal(x):
@@ -218,116 +206,3 @@ def reconstruct_waveform(mel, n_iter=32):
         S, n_iter=n_iter,
         hop_length=hop_length, win_length=win_length)
     return wav
-
-def to_numpy(batch):
-    batch = batch.detach().cpu().numpy()
-    batch = np.squeeze(batch)
-    return batch
-
-def plot_mel_transfer_train(save_path, curr_epoch, mel_in, mel_cyclic, mel_out, mel_target):
-    """Visualises melspectrogram style transfer in training, with target specified"""
-    fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(6, 6))
-    
-    ax[0,0].imshow(mel_in, interpolation="None")
-    ax[0,0].invert_yaxis()
-    ax[0,0].set(title='Input')
-    ax[0,0].set_ylabel('Mels')
-    ax[0,0].axes.xaxis.set_ticks([])
-    ax[0,0].axes.xaxis.set_ticks([])
-    
-    ax[1,0].imshow(mel_cyclic, interpolation="None")
-    ax[1,0].invert_yaxis()
-    ax[1,0].set(title='Cyclic Reconstruction')
-    ax[1,0].set_xlabel('Frames')
-    ax[1,0].set_ylabel('Mels')
-
-    ax[0,1].imshow(mel_out, interpolation="None")
-    ax[0,1].invert_yaxis()
-    ax[0,1].set(title='Output')
-    ax[0,1].axes.yaxis.set_ticks([])
-    ax[0,1].axes.xaxis.set_ticks([])
-    
-    ax[1,1].imshow(mel_target, interpolation="None")
-    ax[1,1].invert_yaxis()
-    ax[1,1].set(title='Target')
-    ax[1,1].set_xlabel('Frames')
-    ax[1,1].axes.yaxis.set_ticks([])
-    
-    fig.suptitle('Epoch ' + str(curr_epoch))
-    plt.savefig(save_path)
-    plt.close()
-    
-def plot_batch_train(modelname, direction, curr_epoch, SRC, cyclic_SRC, fake_TRGT, real_TRGT):
-    SRC, cyclic_SRC, fake_TRGT, real_TRGT = to_numpy(SRC), to_numpy(cyclic_SRC), to_numpy(fake_TRGT), to_numpy(real_TRGT)
-    i = 1
-    for src, cyclic_src, fake_target, real_target in zip(SRC, cyclic_SRC, fake_TRGT, real_TRGT):
-        fname = "out_train/%s/%s/%s_%02d_%s.png"%(modelname, direction, direction, curr_epoch, i)
-        plot_mel_transfer_train(fname, curr_epoch, src, cyclic_src, fake_target, real_target)
-        i += 1
-    
-def plot_mel_transfer_eval(save_path, mel_in, mel_out):
-    """Visualises melspectrogram style transfer in testing, only shows input and output"""
-    fig, ax = plt.subplots(nrows=1, ncols=2, sharex=True, figsize=(5,3))
-    
-    ax[0].imshow(mel_in, interpolation="None")
-    ax[0].invert_yaxis()
-    ax[0].set(title='Input')
-    ax[0].set_ylabel('Mels')
-    ax[0].set_xlabel('Frames')
-
-    ax[1].imshow(mel_out, interpolation="None")
-    ax[1].invert_yaxis()
-    ax[1].set(title='Output')
-    ax[1].set_xlabel('Frames')
-    ax[1].axes.yaxis.set_ticks([])
-
-    plt.tight_layout()
-    plt.savefig(save_path)
-    plt.close()
-   
-    
-def plot_batch_eval(modelname, direction, batchno, SRC, fake_TRGT):
-    SRC, fake_TRGT = to_numpy(SRC), to_numpy(fake_TRGT)
-    i = 1
-    for src, fake_target in zip(SRC, fake_TRGT):
-        fname = "out_eval/%s/%s/%s_%04d_%s.png"%(modelname, direction, direction, batchno, i)
-        plot_mel_transfer_eval(fname, src, fake_target)
-        i += 1
-        
-        
-def wav_batch_eval(modelname, direction, batchno, SRC, fake_TRGT):
-    SRC, fake_TRGT = to_numpy(SRC), to_numpy(fake_TRGT)
-    i = 1
-    for src, fake_target in zip(SRC, fake_TRGT):
-        name = "out_eval/%s/%s/%s_%04d_%s"%(modelname, direction, direction, batchno, i)
-        
-        ref = reconstruct_waveform(src)
-        ref_fname = name + '_ref.wav'
-        sf.write(ref_fname, ref, sample_rate)
-        
-        out = reconstruct_waveform(fake_target)
-        out_fname = name + '_out.wav'
-        sf.write(out_fname, out, sample_rate)
-        i += 1
-        
-
-def plot_mel_transfer_infer(save_path, mel_in, mel_out):
-    """Visualises melspectrogram style transfer in inference, shows total input and output"""
-    fig, ax = plt.subplots(nrows=2, ncols=1, sharey=True)
-
-    ax[0].imshow(mel_in, interpolation="None", aspect='auto')
-    ax[0].set(title='Input')
-    ax[0].set_ylabel('Mels')
-    ax[0].axes.xaxis.set_ticks([])
-
-    ax[1].imshow(mel_out, interpolation="None", aspect='auto')
-    ax[1].set(title='Output')
-    ax[1].set_ylabel('Mels')
-    ax[1].set_xlabel('Frames')
-    
-    ax[0].invert_yaxis()
-    plt.tight_layout()
-    plt.savefig(save_path)
-    plt.close()
-    
-    
